@@ -52,6 +52,7 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     annotationProcessor("androidx.room:room-compiler:2.6.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("com.amap.api:3dmap:latest.integration")
-    implementation("com.amap.api:search:latest.integration")
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.code.gson:gson:2.10.1")
 }

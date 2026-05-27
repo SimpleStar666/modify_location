@@ -9,24 +9,29 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
-import com.amap.api.maps.AMap
-import com.amap.api.maps.CameraUpdateFactory
-import com.amap.api.maps.model.LatLng
-import com.amap.api.maps.model.MarkerOptions
-import com.amap.api.services.geocoder.GeocodeResult
-import com.amap.api.services.geocoder.GeocodeSearch
-import com.amap.api.services.geocoder.RegeocodeResult
 import com.mocklocation.app.R
 import com.mocklocation.app.databinding.FragmentMapBinding
 import com.mocklocation.app.util.PermissionHelper
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import org.osmdroid.config.Configuration
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 
 class MapFragment : Fragment() {
 
     private var _binding: FragmentMapBinding? = null
     private val binding get() = _binding!!
     private val viewModel: MapViewModel by viewModels()
-    private var aMap: AMap? = null
+    private var map: MapView? = null
+    private var currentMarker: Marker? = null
+    private val httpClient = OkHttpClient()
+    private val gson = Gson()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -39,49 +44,70 @@ class MapFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        initMap(savedInstanceState)
+        initMap()
         initSearch()
         initMockButton()
         observeState()
         checkPermissions()
     }
 
-    private fun initMap(savedInstanceState: Bundle?) {
-        binding.mapView.onCreate(savedInstanceState)
-        aMap = binding.mapView.map
-        aMap?.setOnMapClickListener { latLng ->
-            selectLocation(latLng)
+    private fun initMap() {
+        Configuration.getInstance().load(
+            requireContext(),
+            requireContext().getSharedPreferences("osmdroid", 0)
+        )
+        map = binding.mapView
+        map?.setTileSource(TileSourceFactory.MAPNIK)
+        map?.setMultiTouchControls(true)
+        map?.controller?.setZoom(15.0)
+        map?.controller?.setCenter(GeoPoint(39.9042, 116.4074))
+
+        map?.addOnMapClickListener { geoPoint ->
+            selectLocation(geoPoint)
+            true
         }
     }
 
-    private fun selectLocation(latLng: LatLng) {
-        aMap?.clear()
-        aMap?.addMarker(
-            MarkerOptions()
-                .position(latLng)
-                .title("${latLng.latitude}, ${latLng.longitude}")
-        )
-        aMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 16f))
+    private fun selectLocation(geoPoint: GeoPoint) {
+        currentMarker?.let { map?.overlays?.remove(it) }
 
-        val geocodeSearch = GeocodeSearch(requireContext())
-        geocodeSearch.setOnGeocodeSearchListener(object : GeocodeSearch.OnGeocodeSearchListener {
-            override fun onRegeocodeSearched(result: RegeocodeResult?, rCode: Int) {
-                val address = result?.regeocodeAddress?.formatAddress ?: ""
-                val name = result?.regeocodeAddress?.poiResults?.firstOrNull()?.poiName
-                    ?: address
-                viewModel.onLocationSelected(
-                    latLng.latitude, latLng.longitude, name, address
-                )
+        val marker = Marker(map)
+        marker.position = geoPoint
+        marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+        marker.title = "${geoPoint.latitude}, ${geoPoint.longitude}"
+        map?.overlays?.add(marker)
+        currentMarker = marker
+        map?.invalidate()
+
+        reverseGeocode(geoPoint.latitude, geoPoint.longitude)
+    }
+
+    private fun reverseGeocode(lat: Double, lng: Double) {
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1"
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "MockLocationApp/1.0")
+                    .build()
+                val response = httpClient.newCall(request).execute()
+                val body = response.body?.string() ?: return@launch
+
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val displayName = json.get("display_name")?.asString ?: ""
+                val name = json.get("name")?.asString
+                    ?: json.getAsJsonObject("address")?.get("road")?.asString
+                    ?: displayName
+
+                launch(kotlinx.coroutines.Dispatchers.Main) {
+                    viewModel.onLocationSelected(lat, lng, name, displayName)
+                }
+            } catch (e: Exception) {
+                launch(kotlinx.coroutines.Dispatchers.Main) {
+                    viewModel.onLocationSelected(lat, lng, "$lat, $lng", "")
+                }
             }
-            override fun onGeocodeSearched(result: GeocodeResult?, rCode: Int) {}
-        })
-
-        val query = GeocodeSearch.RegeocodeQuery(
-            com.amap.api.services.core.LatLonPoint(latLng.latitude, latLng.longitude),
-            200f,
-            GeocodeSearch.AMAP
-        )
-        geocodeSearch.getFromLocationAsyn(query)
+        }
     }
 
     private fun initSearch() {
@@ -99,26 +125,47 @@ class MapFragment : Fragment() {
         if (match != null) {
             val lat = match.groupValues[1].toDouble()
             val lng = match.groupValues[2].toDouble()
-            selectLocation(LatLng(lat, lng))
+            val geoPoint = GeoPoint(lat, lng)
+            map?.controller?.animateTo(geoPoint)
+            selectLocation(geoPoint)
             return
         }
 
-        val geocodeSearch = GeocodeSearch(requireContext())
-        geocodeSearch.setOnGeocodeSearchListener(object : GeocodeSearch.OnGeocodeSearchListener {
-            override fun onGeocodeSearched(result: GeocodeResult?, rCode: Int) {
-                val first = result?.geocodeAddressList?.firstOrNull()
-                if (first != null) {
-                    val latLng = LatLng(first.latLonPoint.latitude, first.latLonPoint.longitude)
-                    selectLocation(latLng)
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+                val url = "https://nominatim.openstreetmap.org/search?format=json&q=$encoded&limit=1"
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "MockLocationApp/1.0")
+                    .build()
+                val response = httpClient.newCall(request).execute()
+                val body = response.body?.string() ?: return@launch
+
+                val results = gson.fromJson(body, com.google.gson.JsonArray::class.java)
+                if (results.size() > 0) {
+                    val first = results[0].asJsonObject
+                    val lat = first.get("lat").asString.toDouble()
+                    val lng = first.get("lon").asString.toDouble()
+                    val displayName = first.get("display_name").asString
+                    val name = first.get("name")?.asString ?: displayName
+
+                    launch(kotlinx.coroutines.Dispatchers.Main) {
+                        val geoPoint = GeoPoint(lat, lng)
+                        map?.controller?.animateTo(geoPoint)
+                        selectLocation(geoPoint)
+                    }
                 } else {
+                    launch(kotlinx.coroutines.Dispatchers.Main) {
+                        Toast.makeText(requireContext(), R.string.no_results, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                launch(kotlinx.coroutines.Dispatchers.Main) {
                     Toast.makeText(requireContext(), R.string.no_results, Toast.LENGTH_SHORT).show()
                 }
             }
-            override fun onRegeocodeSearched(result: RegeocodeResult?, rCode: Int) {}
-        })
-
-        val geocodeQuery = GeocodeSearch.GeocodeQuery(query, "")
-        geocodeSearch.getFromLocationNameAsyn(geocodeQuery)
+        }
     }
 
     private fun initMockButton() {
@@ -179,13 +226,8 @@ class MapFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        binding.mapView.onDestroy()
+        binding.mapView.onDetach()
         _binding = null
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        binding.mapView.onSaveInstanceState(outState)
     }
 
     companion object {

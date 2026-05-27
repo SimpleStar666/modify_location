@@ -45,7 +45,7 @@
 
     </com.google.android.material.card.MaterialCardView>
 
-    <com.amap.api.maps.MapView
+    <org.osmdroid.views.MapView
         android:id="@+id/map_view"
         android:layout_width="0dp"
         android:layout_height="0dp"
