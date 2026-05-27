@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/mapFragment">
+
+    <fragment
+        android:id="@+id/mapFragment"
+        android:name="com.mocklocation.app.ui.map.MapFragment"
+        android:label="@string/tab_map" />
+
+    <fragment
+        android:id="@+id/favoriteFragment"
+        android:name="com.mocklocation.app.ui.favorite.FavoriteFragment"
+        android:label="@string/tab_favorite" />
+
+    <fragment
+        android:id="@+id/historyFragment"
+        android:name="com.mocklocation.app.ui.history.HistoryFragment"
+        android:label="@string/tab_history" />
+
+</navigation>

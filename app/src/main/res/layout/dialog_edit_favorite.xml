@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <EditText
+        android:id="@+id/et_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/hint_location_name"
+        android:inputType="text"
+        android:layout_marginBottom="8dp" />
+
+    <EditText
+        android:id="@+id/et_address"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="地址"
+        android:inputType="text"
+        android:layout_marginBottom="8dp" />
+
+    <EditText
+        android:id="@+id/et_latitude"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="纬度"
+        android:inputType="numberDecimal|numberSigned"
+        android:layout_marginBottom="8dp" />
+
+    <EditText
+        android:id="@+id/et_longitude"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="经度"
+        android:inputType="numberDecimal|numberSigned" />
+
+</LinearLayout>

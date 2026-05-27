@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#FFD32F2F</color>
+    <color name="on_primary">#FFFFFFFF</color>
+    <color name="primary_container">#FFFFCDD2</color>
+    <color name="on_primary_container">#FF9A0000</color>
+    <color name="secondary">#FF616161</color>
+    <color name="on_secondary">#FFFFFFFF</color>
+    <color name="background">#FFFFFBFE</color>
+    <color name="on_background">#FF1C1B1F</color>
+    <color name="surface">#FFFFFBFE</color>
+    <color name="on_surface">#FF1C1B1F</color>
+    <color name="mocking_blue">#FF2196F3</color>
+</resources>
