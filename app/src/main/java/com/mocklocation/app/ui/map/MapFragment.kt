@@ -12,12 +12,13 @@ import androidx.lifecycle.lifecycleScope
 import com.mocklocation.app.R
 import com.mocklocation.app.databinding.FragmentMapBinding
 import com.mocklocation.app.util.PermissionHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import org.osmdroid.config.Configuration
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.util.GeoPoint
@@ -54,10 +55,6 @@ class MapFragment : Fragment() {
     }
 
     private fun initMap() {
-        Configuration.getInstance().load(
-            requireContext(),
-            requireContext().getSharedPreferences("osmdroid", 0)
-        )
         map = binding.mapView
         map?.setTileSource(TileSourceFactory.MAPNIK)
         map?.setMultiTouchControls(true)
@@ -91,7 +88,7 @@ class MapFragment : Fragment() {
     }
 
     private fun reverseGeocode(lat: Double, lng: Double) {
-        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1"
                 val request = Request.Builder()
@@ -107,11 +104,11 @@ class MapFragment : Fragment() {
                     ?: json.getAsJsonObject("address")?.get("road")?.asString
                     ?: displayName
 
-                launch(kotlinx.coroutines.Dispatchers.Main) {
+                withContext(Dispatchers.Main) {
                     viewModel.onLocationSelected(lat, lng, name, displayName)
                 }
             } catch (e: Exception) {
-                launch(kotlinx.coroutines.Dispatchers.Main) {
+                withContext(Dispatchers.Main) {
                     viewModel.onLocationSelected(lat, lng, "$lat, $lng", "")
                 }
             }
@@ -139,7 +136,7 @@ class MapFragment : Fragment() {
             return
         }
 
-        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val encoded = java.net.URLEncoder.encode(query, "UTF-8")
                 val url = "https://nominatim.openstreetmap.org/search?format=json&q=$encoded&limit=1"
@@ -155,21 +152,19 @@ class MapFragment : Fragment() {
                     val first = results[0].asJsonObject
                     val lat = first.get("lat").asString.toDouble()
                     val lng = first.get("lon").asString.toDouble()
-                    val displayName = first.get("display_name").asString
-                    val name = first.get("name")?.asString ?: displayName
 
-                    launch(kotlinx.coroutines.Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         val geoPoint = GeoPoint(lat, lng)
                         map?.controller?.animateTo(geoPoint)
                         selectLocation(geoPoint)
                     }
                 } else {
-                    launch(kotlinx.coroutines.Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
                         Toast.makeText(requireContext(), R.string.no_results, Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
-                launch(kotlinx.coroutines.Dispatchers.Main) {
+                withContext(Dispatchers.Main) {
                     Toast.makeText(requireContext(), R.string.no_results, Toast.LENGTH_SHORT).show()
                 }
             }
