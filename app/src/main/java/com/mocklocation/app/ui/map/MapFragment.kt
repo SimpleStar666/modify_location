@@ -62,6 +62,7 @@ class MapFragment : Fragment() {
         map = binding.mapView
         map?.setTileSource(AmapTileSource())
         map?.setMultiTouchControls(true)
+        map?.isTilesScaledToDpi = true
         map?.controller?.setZoom(15.0)
         map?.controller?.setCenter(GeoPoint(39.9042, 116.4074))
         map?.setUseDataConnection(true)

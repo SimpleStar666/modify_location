@@ -8,7 +8,7 @@ class AmapTileSource : OnlineTileSourceBase(
     "Amap",
     0,
     19,
-    256,
+    512,
     ".png",
     arrayOf(
         "https://webrd01.is.autonavi.com/appmaptile",
@@ -26,6 +26,6 @@ class AmapTileSource : OnlineTileSourceBase(
         val zoom = MapTileIndex.getZoom(pMapTileIndex)
         val x = MapTileIndex.getX(pMapTileIndex)
         val y = MapTileIndex.getY(pMapTileIndex)
-        return getBaseUrl() + "?lang=zh_cn&size=1&scale=1&style=8&x=$x&y=$y&z=$zoom"
+        return getBaseUrl() + "?lang=zh_cn&size=1&scale=2&style=8&x=$x&y=$y&z=$zoom"
     }
 }
