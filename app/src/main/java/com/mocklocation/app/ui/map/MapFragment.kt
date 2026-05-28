@@ -22,6 +22,8 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.events.MapEventsReceiver
+import org.osmdroid.views.overlay.MapEventsOverlay
 
 class MapFragment : Fragment() {
 
@@ -62,10 +64,16 @@ class MapFragment : Fragment() {
         map?.controller?.setZoom(15.0)
         map?.controller?.setCenter(GeoPoint(39.9042, 116.4074))
 
-        map?.addOnMapClickListener { geoPoint ->
-            selectLocation(geoPoint)
-            true
+        val mapEventsReceiver = object : MapEventsReceiver {
+            override fun singleTapConfirmedHelper(geoPoint: GeoPoint): Boolean {
+                selectLocation(geoPoint)
+                return true
+            }
+            override fun longPressHelper(geoPoint: GeoPoint): Boolean {
+                return false
+            }
         }
+        map?.overlays?.add(MapEventsOverlay(mapEventsReceiver))
     }
 
     private fun selectLocation(geoPoint: GeoPoint) {
