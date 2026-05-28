@@ -53,7 +53,7 @@ class MapFragment : Fragment() {
         geoCoder = GeoCoder(requireContext().applicationContext)
         initMap()
         initSearch()
-        initMockButton()
+        initButtons()
         observeState()
         checkPermissions()
     }
@@ -198,7 +198,7 @@ class MapFragment : Fragment() {
             .show()
     }
 
-    private fun initMockButton() {
+    private fun initButtons() {
         binding.btnMock.setOnClickListener {
             val state = viewModel.uiState.value
             if (state.selectedLat == 0.0 && state.selectedLng == 0.0) {
@@ -210,6 +210,15 @@ class MapFragment : Fragment() {
             } else {
                 viewModel.startMocking()
             }
+        }
+
+        binding.btnFavorite.setOnClickListener {
+            val state = viewModel.uiState.value
+            if (state.selectedLat == 0.0 && state.selectedLng == 0.0) {
+                Toast.makeText(requireContext(), "请先选择一个位置", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            viewModel.addFavorite()
         }
     }
 
@@ -232,7 +241,7 @@ class MapFragment : Fragment() {
                     binding.btnMock.text = getString(R.string.btn_start_mock)
                 }
                 state.error?.let {
-                    Toast.makeText(requireContext(), it, Toast.LENGTH_LONG).show()
+                    Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
                     viewModel.clearError()
                 }
             }
