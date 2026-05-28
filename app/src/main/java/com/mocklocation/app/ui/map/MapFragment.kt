@@ -1,11 +1,16 @@
 package com.mocklocation.app.ui.map
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -25,6 +30,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.views.overlay.MapEventsOverlay
+import java.net.URLEncoder
 
 class MapFragment : Fragment() {
 
@@ -33,7 +39,10 @@ class MapFragment : Fragment() {
     private val viewModel: MapViewModel by viewModels()
     private var map: MapView? = null
     private var currentMarker: Marker? = null
-    private val httpClient = OkHttpClient()
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
     private val gson = Gson()
 
     override fun onCreateView(
@@ -60,6 +69,7 @@ class MapFragment : Fragment() {
         map?.setMultiTouchControls(true)
         map?.controller?.setZoom(15.0)
         map?.controller?.setCenter(GeoPoint(39.9042, 116.4074))
+        map?.setUseDataConnection(true)
 
         val mapEventsReceiver = object : MapEventsReceiver {
             override fun singleTapConfirmedHelper(geoPoint: GeoPoint): Boolean {
@@ -84,19 +94,37 @@ class MapFragment : Fragment() {
         currentMarker = marker
         map?.invalidate()
 
+        viewModel.onLocationSelected(
+            geoPoint.latitude, geoPoint.longitude,
+            "${geoPoint.latitude}, ${geoPoint.longitude}", ""
+        )
+
         reverseGeocode(geoPoint.latitude, geoPoint.longitude)
     }
 
     private fun reverseGeocode(lat: Double, lng: Double) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1"
+                val url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1&accept-language=zh"
                 val request = Request.Builder()
                     .url(url)
                     .header("User-Agent", "MockLocationApp/1.0")
+                    .header("Accept-Language", "zh-CN,zh;q=0.9")
                     .build()
                 val response = httpClient.newCall(request).execute()
-                val body = response.body?.string() ?: return@launch
+                if (!response.isSuccessful) {
+                    withContext(Dispatchers.Main) {
+                        viewModel.onLocationSelected(lat, lng, "$lat, $lng", "")
+                    }
+                    return@launch
+                }
+                val body = response.body?.string()
+                if (body.isNullOrEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        viewModel.onLocationSelected(lat, lng, "$lat, $lng", "")
+                    }
+                    return@launch
+                }
 
                 val json = gson.fromJson(body, JsonObject::class.java)
                 val displayName = json.get("display_name")?.asString ?: ""
@@ -125,6 +153,8 @@ class MapFragment : Fragment() {
     }
 
     private fun performSearch(query: String) {
+        if (query.isBlank()) return
+
         val coordRegex = Regex("""^(-?\d+\.?\d*)\s*[,，\s]\s*(-?\d+\.?\d*)$""")
         val match = coordRegex.find(query)
         if (match != null) {
@@ -138,20 +168,34 @@ class MapFragment : Fragment() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-                val url = "https://nominatim.openstreetmap.org/search?format=json&q=$encoded&limit=1"
+                val encoded = URLEncoder.encode(query, "UTF-8")
+                val url = "https://nominatim.openstreetmap.org/search?format=json&q=$encoded&limit=5&accept-language=zh"
                 val request = Request.Builder()
                     .url(url)
                     .header("User-Agent", "MockLocationApp/1.0")
+                    .header("Accept-Language", "zh-CN,zh;q=0.9")
                     .build()
                 val response = httpClient.newCall(request).execute()
-                val body = response.body?.string() ?: return@launch
+                if (!response.isSuccessful) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(requireContext(), "搜索失败 (HTTP ${response.code})", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+                val body = response.body?.string()
+                if (body.isNullOrEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(requireContext(), R.string.no_results, Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
 
                 val results = gson.fromJson(body, com.google.gson.JsonArray::class.java)
                 if (results.size() > 0) {
                     val first = results[0].asJsonObject
                     val lat = first.get("lat").asString.toDouble()
                     val lng = first.get("lon").asString.toDouble()
+                    val name = first.get("display_name")?.asString ?: ""
 
                     withContext(Dispatchers.Main) {
                         val geoPoint = GeoPoint(lat, lng)
@@ -165,7 +209,7 @@ class MapFragment : Fragment() {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(requireContext(), R.string.no_results, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "搜索出错: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -209,11 +253,25 @@ class MapFragment : Fragment() {
     }
 
     private fun checkPermissions() {
+        val perms = mutableListOf<String>()
         if (!PermissionHelper.hasLocationPermission(requireContext())) {
-            PermissionHelper.requestLocationPermission(
-                requireActivity(),
-                REQUEST_LOCATION
-            )
+            perms.addAll(PermissionHelper.locationPermissions)
+        }
+        if (Build.VERSION.SDK_INT < 29) {
+            if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+                perms.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }
+        if (perms.isNotEmpty()) {
+            ActivityCompat.requestPermissions(requireActivity(), perms.toTypedArray(), REQUEST_PERMISSIONS)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_PERMISSIONS) {
+            map?.invalidate()
         }
     }
 
@@ -234,6 +292,6 @@ class MapFragment : Fragment() {
     }
 
     companion object {
-        private const val REQUEST_LOCATION = 100
+        private const val REQUEST_PERMISSIONS = 100
     }
 }

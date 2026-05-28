@@ -14,6 +14,9 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        Configuration.getInstance().load(this, getSharedPreferences("osmdroid", 0))
+        val prefs = getSharedPreferences("osmdroid", MODE_PRIVATE)
+        Configuration.getInstance().load(this, prefs)
+        Configuration.getInstance().userAgentValue = "MockLocationApp/1.0"
+        Configuration.getInstance().osmdroidTileCache = getFileStreamPath("osmdroid_tiles")
     }
 }
