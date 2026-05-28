@@ -146,7 +146,7 @@ class GeoCoder(private val context: Context) {
                 val name = tags.get("name")?.asString ?: continue
                 val eLat = obj.get("lat")?.asDouble ?: continue
                 val eLon = obj.get("lon")?.asDouble ?: continue
-                val dist = kotlin.math.sqrt(kotlin.math.pow(eLat - lat, 2.0) + kotlin.math.pow(eLon - lng, 2.0))
+                val dist = Math.sqrt(Math.pow(eLat - lat, 2.0) + Math.pow(eLon - lng, 2.0))
                 if (dist < closestDist) {
                     closestDist = dist
                     closestName = name
