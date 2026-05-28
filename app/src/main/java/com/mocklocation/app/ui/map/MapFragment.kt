@@ -23,9 +23,7 @@ import com.mocklocation.app.util.AmapTileSource
 import com.mocklocation.app.util.CoordTransform
 import com.mocklocation.app.util.GeoCoder
 import com.mocklocation.app.util.PermissionHelper
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.util.GeoPoint
@@ -106,13 +104,14 @@ class MapFragment : Fragment() {
 
     private fun reverseGeocode(lat: Double, lng: Double) {
         lifecycleScope.launch {
-            val result = geoCoder.reverseGeocode(lat, lng)
-            if (result != null) {
-                val wgs84 = CoordTransform.gcj02ToWgs84(result.latitude, result.longitude)
+            val searchResult = geoCoder.reverseGeocode(lat, lng)
+            val geoResult = searchResult.result
+            if (geoResult != null) {
+                val wgs84 = CoordTransform.gcj02ToWgs84(geoResult.latitude, geoResult.longitude)
                 viewModel.onLocationSelected(
                     wgs84[0], wgs84[1],
-                    result.latitude, result.longitude,
-                    result.name, result.address
+                    geoResult.latitude, geoResult.longitude,
+                    geoResult.name, geoResult.address
                 )
             }
         }
@@ -150,31 +149,18 @@ class MapFragment : Fragment() {
         }
 
         lifecycleScope.launch {
-            try {
-                val result = geoCoder.search(query)
-                if (result != null) {
-                    withContext(Dispatchers.Main) {
-                        val geoPoint = GeoPoint(result.latitude, result.longitude)
-                        map?.controller?.animateTo(geoPoint)
-                        selectLocation(geoPoint)
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            requireContext(),
-                            "未找到该地点，请尝试其他关键词",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        requireContext(),
-                        "搜索失败: ${e.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+            val searchResult = geoCoder.search(query)
+            if (searchResult.result != null) {
+                val geoResult = searchResult.result
+                val geoPoint = GeoPoint(geoResult.latitude, geoResult.longitude)
+                map?.controller?.animateTo(geoPoint)
+                selectLocation(geoPoint)
+            } else {
+                Toast.makeText(
+                    requireContext(),
+                    searchResult.error ?: "搜索失败",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
