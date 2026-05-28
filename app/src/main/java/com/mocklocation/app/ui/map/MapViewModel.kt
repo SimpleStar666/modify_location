@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.IntentFilter.MalformedMimeTypeException
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mocklocation.app.App
@@ -19,6 +18,8 @@ import kotlinx.coroutines.launch
 data class MapUiState(
     val selectedLat: Double = 0.0,
     val selectedLng: Double = 0.0,
+    val gcjLat: Double = 0.0,
+    val gcjLng: Double = 0.0,
     val selectedName: String = "",
     val selectedAddress: String = "",
     val isMocking: Boolean = false,
@@ -55,10 +56,16 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun onLocationSelected(lat: Double, lng: Double, name: String, address: String) {
+    fun onLocationSelected(
+        wgsLat: Double, wgsLng: Double,
+        gcjLat: Double, gcjLng: Double,
+        name: String, address: String
+    ) {
         _uiState.value = _uiState.value.copy(
-            selectedLat = lat,
-            selectedLng = lng,
+            selectedLat = wgsLat,
+            selectedLng = wgsLng,
+            gcjLat = gcjLat,
+            gcjLng = gcjLng,
             selectedName = name,
             selectedAddress = address
         )

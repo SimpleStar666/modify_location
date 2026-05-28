@@ -1,5 +1,6 @@
 package com.mocklocation.app.util
 
+import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +17,7 @@ data class GeoResult(
     val longitude: Double
 )
 
-class GeoCoder {
+class GeoCoder(private val context: Context) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -24,17 +25,80 @@ class GeoCoder {
         .build()
     private val gson = Gson()
 
+    private val amapKey: String?
+        get() = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            .getString("amap_api_key", null)
+
     suspend fun reverseGeocode(lat: Double, lng: Double): GeoResult? {
         return withContext(Dispatchers.IO) {
-            tryNominatimReverse(lat, lng)
+            tryAmapReverse(lat, lng)
+                ?: tryNominatimReverse(lat, lng)
                 ?: tryOverpassReverse(lat, lng)
         }
     }
 
     suspend fun search(query: String): GeoResult? {
         return withContext(Dispatchers.IO) {
-            tryNominatimSearch(query)
+            tryAmapSearch(query)
+                ?: tryNominatimSearch(query)
                 ?: tryOverpassSearch(query)
+        }
+    }
+
+    private fun tryAmapReverse(lat: Double, lng: Double): GeoResult? {
+        val key = amapKey ?: return null
+        return try {
+            val url = "https://restapi.amap.com/v3/geocode/regeo?key=$key&location=$lng,$lat&extensions=base&output=JSON"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "MockLocationApp/1.0")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return null
+            val body = response.body?.string() ?: return null
+            val json = gson.fromJson(body, JsonObject::class.java)
+            val status = json.get("status")?.asString
+            if (status != "1") return null
+            val regeocode = json.getAsJsonObject("regeocode") ?: return null
+            val formattedAddress = regeocode.get("formatted_address")?.asString ?: return null
+            val addressComponent = regeocode.getAsJsonObject("addressComponent")
+            val name = addressComponent?.get("township")?.asString
+                ?: addressComponent?.get("district")?.asString
+                ?: formattedAddress
+            GeoResult(name, formattedAddress, lat, lng)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun tryAmapSearch(query: String): GeoResult? {
+        val key = amapKey ?: return null
+        return try {
+            val encoded = URLEncoder.encode(query, "UTF-8")
+            val url = "https://restapi.amap.com/v3/place/text?key=$key&keywords=$encoded&offset=5&page=1&output=JSON"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "MockLocationApp/1.0")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return null
+            val body = response.body?.string() ?: return null
+            val json = gson.fromJson(body, JsonObject::class.java)
+            val status = json.get("status")?.asString
+            if (status != "1") return null
+            val pois = json.getAsJsonArray("pois") ?: return null
+            if (pois.size() == 0) return null
+            val first = pois[0].asJsonObject
+            val name = first.get("name")?.asString ?: return null
+            val address = first.get("address")?.asString ?: name
+            val location = first.get("location")?.asString ?: return null
+            val parts = location.split(",")
+            if (parts.size != 2) return null
+            val lng = parts[0].toDoubleOrNull() ?: return null
+            val lat = parts[1].toDoubleOrNull() ?: return null
+            GeoResult(name, address, lat, lng)
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -74,7 +138,6 @@ class GeoCoder {
             val json = gson.fromJson(body, JsonObject::class.java)
             val elements = json.getAsJsonArray("elements") ?: return null
             if (elements.size() == 0) return null
-
             var closestName: String? = null
             var closestDist = Double.MAX_VALUE
             for (element in elements) {
@@ -83,15 +146,13 @@ class GeoCoder {
                 val name = tags.get("name")?.asString ?: continue
                 val eLat = obj.get("lat")?.asDouble ?: continue
                 val eLon = obj.get("lon")?.asDouble ?: continue
-                val dist = Math.sqrt(Math.pow(eLat - lat, 2.0) + Math.pow(eLon - lng, 2.0))
+                val dist = kotlin.math.sqrt(kotlin.math.pow(eLat - lat, 2.0) + kotlin.math.pow(eLon - lng, 2.0))
                 if (dist < closestDist) {
                     closestDist = dist
                     closestName = name
                 }
             }
-            if (closestName != null) {
-                GeoResult(closestName, closestName, lat, lng)
-            } else null
+            if (closestName != null) GeoResult(closestName, closestName, lat, lng) else null
         } catch (_: Exception) {
             null
         }

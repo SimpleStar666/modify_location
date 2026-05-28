@@ -1,6 +1,8 @@
 package com.mocklocation.app.ui.map
 
 import android.Manifest
+import android.app.AlertDialog
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -8,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -16,6 +19,8 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.mocklocation.app.R
 import com.mocklocation.app.databinding.FragmentMapBinding
+import com.mocklocation.app.util.AmapTileSource
+import com.mocklocation.app.util.CoordTransform
 import com.mocklocation.app.util.GeoCoder
 import com.mocklocation.app.util.PermissionHelper
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +29,6 @@ import kotlinx.coroutines.withContext
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.util.GeoPoint
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.views.overlay.MapEventsOverlay
 
@@ -35,7 +39,7 @@ class MapFragment : Fragment() {
     private val viewModel: MapViewModel by viewModels()
     private var map: MapView? = null
     private var currentMarker: Marker? = null
-    private val geoCoder = GeoCoder()
+    private lateinit var geoCoder: GeoCoder
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -48,6 +52,7 @@ class MapFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        geoCoder = GeoCoder(requireContext().applicationContext)
         initMap()
         initSearch()
         initMockButton()
@@ -57,7 +62,7 @@ class MapFragment : Fragment() {
 
     private fun initMap() {
         map = binding.mapView
-        map?.setTileSource(TileSourceFactory.MAPNIK)
+        map?.setTileSource(AmapTileSource())
         map?.setMultiTouchControls(true)
         map?.controller?.setZoom(15.0)
         map?.controller?.setCenter(GeoPoint(39.9042, 116.4074))
@@ -86,19 +91,29 @@ class MapFragment : Fragment() {
         currentMarker = marker
         map?.invalidate()
 
+        val gcjLat = geoPoint.latitude
+        val gcjLng = geoPoint.longitude
+        val wgs84 = CoordTransform.gcj02ToWgs84(gcjLat, gcjLng)
+
         viewModel.onLocationSelected(
-            geoPoint.latitude, geoPoint.longitude,
-            "${geoPoint.latitude}, ${geoPoint.longitude}", ""
+            wgs84[0], wgs84[1],
+            gcjLat, gcjLng,
+            "${gcjLat}, ${gcjLng}", ""
         )
 
-        reverseGeocode(geoPoint.latitude, geoPoint.longitude)
+        reverseGeocode(gcjLat, gcjLng)
     }
 
     private fun reverseGeocode(lat: Double, lng: Double) {
         lifecycleScope.launch {
             val result = geoCoder.reverseGeocode(lat, lng)
             if (result != null) {
-                viewModel.onLocationSelected(lat, lng, result.name, result.address)
+                val wgs84 = CoordTransform.gcj02ToWgs84(result.latitude, result.longitude)
+                viewModel.onLocationSelected(
+                    wgs84[0], wgs84[1],
+                    result.latitude, result.longitude,
+                    result.name, result.address
+                )
             }
         }
     }
@@ -120,9 +135,17 @@ class MapFragment : Fragment() {
         if (match != null) {
             val lat = match.groupValues[1].toDouble()
             val lng = match.groupValues[2].toDouble()
-            val geoPoint = GeoPoint(lat, lng)
+            val gcj02 = CoordTransform.wgs84ToGcj02(lat, lng)
+            val geoPoint = GeoPoint(gcj02[0], gcj02[1])
             map?.controller?.animateTo(geoPoint)
             selectLocation(geoPoint)
+            return
+        }
+
+        val key = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            .getString("amap_api_key", null)
+        if (key.isNullOrBlank()) {
+            showApiKeyDialog()
             return
         }
 
@@ -139,7 +162,7 @@ class MapFragment : Fragment() {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(
                             requireContext(),
-                            "未找到该地点，请尝试输入坐标（如：22.5431, 114.0579）",
+                            "未找到该地点，请尝试其他关键词",
                             Toast.LENGTH_LONG
                         ).show()
                     }
@@ -148,12 +171,45 @@ class MapFragment : Fragment() {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         requireContext(),
-                        "搜索失败，请尝试输入坐标（如：22.5431, 114.0579）",
+                        "搜索失败: ${e.message}",
                         Toast.LENGTH_LONG
                     ).show()
                 }
             }
         }
+    }
+
+    private fun showApiKeyDialog() {
+        val editText = EditText(requireContext()).apply {
+            hint = "输入高德 Web 服务 API Key"
+            setPadding(48, 24, 48, 24)
+            val savedKey = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                .getString("amap_api_key", "")
+            setText(savedKey)
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("设置高德 API Key")
+            .setMessage("搜索地名需要高德 Web 服务 API Key（免费）。\n\n" +
+                "获取方式：\n" +
+                "1. 访问 https://lbs.amap.com\n" +
+                "2. 注册免费账号\n" +
+                "3. 进入控制台 → 我的应用 → 添加 Key\n" +
+                "4. 服务平台选「Web服务」\n\n" +
+                "免费额度：每天 5000 次")
+            .setView(editText)
+            .setPositiveButton("保存") { _, _ ->
+                val key = editText.text.toString().trim()
+                if (key.isNotBlank()) {
+                    requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                        .edit()
+                        .putString("amap_api_key", key)
+                        .apply()
+                    Toast.makeText(requireContext(), "API Key 已保存，请重新搜索", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun initMockButton() {
