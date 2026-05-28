@@ -17,6 +17,7 @@ class MockLocationService : Service() {
         const val CHANNEL_ID = "mock_location_channel"
         const val NOTIFICATION_ID = 1
         const val ACTION_STOP = "com.mocklocation.app.ACTION_STOP"
+        const val ACTION_MOCK_FAILED = "com.mocklocation.app.ACTION_MOCK_FAILED"
 
         const val EXTRA_LATITUDE = "latitude"
         const val EXTRA_LONGITUDE = "longitude"
@@ -36,7 +37,7 @@ class MockLocationService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            stopSelf()
+            stopMockingAndStopSelf()
             return START_NOT_STICKY
         }
 
@@ -44,24 +45,35 @@ class MockLocationService : Service() {
         currentLng = intent?.getDoubleExtra(EXTRA_LONGITUDE, 0.0) ?: 0.0
         val name = intent?.getStringExtra(EXTRA_NAME) ?: ""
 
-        val notification = buildNotification(name)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID, notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            val notification = buildNotification(name)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            stopSelf()
+            return START_NOT_STICKY
         }
 
-        startMocking()
+        val success = mockManager.startMocking(currentLat, currentLng)
+        if (!success) {
+            stopMockingAndStopSelf()
+            val failIntent = Intent(ACTION_MOCK_FAILED)
+            failIntent.setPackage(packageName)
+            sendBroadcast(failIntent)
+            return START_NOT_STICKY
+        }
 
+        startMockingLoop()
         return START_STICKY
     }
 
-    private fun startMocking() {
-        mockManager.startMocking(currentLat, currentLng)
+    private fun startMockingLoop() {
         mockJob?.cancel()
         mockJob = scope.launch {
             while (isActive) {
@@ -69,6 +81,14 @@ class MockLocationService : Service() {
                 delay(1000)
             }
         }
+    }
+
+    private fun stopMockingAndStopSelf() {
+        mockJob?.cancel()
+        mockManager.stopMocking()
+        scope.cancel()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     override fun onDestroy() {

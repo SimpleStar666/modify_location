@@ -16,21 +16,17 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.mocklocation.app.R
 import com.mocklocation.app.databinding.FragmentMapBinding
+import com.mocklocation.app.util.GeoCoder
 import com.mocklocation.app.util.PermissionHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import com.google.gson.Gson
-import com.google.gson.JsonObject
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.views.overlay.MapEventsOverlay
-import java.net.URLEncoder
 
 class MapFragment : Fragment() {
 
@@ -39,11 +35,7 @@ class MapFragment : Fragment() {
     private val viewModel: MapViewModel by viewModels()
     private var map: MapView? = null
     private var currentMarker: Marker? = null
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
-    private val gson = Gson()
+    private val geoCoder = GeoCoder()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -103,42 +95,10 @@ class MapFragment : Fragment() {
     }
 
     private fun reverseGeocode(lat: Double, lng: Double) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1&accept-language=zh"
-                val request = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", "MockLocationApp/1.0")
-                    .header("Accept-Language", "zh-CN,zh;q=0.9")
-                    .build()
-                val response = httpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    withContext(Dispatchers.Main) {
-                        viewModel.onLocationSelected(lat, lng, "$lat, $lng", "")
-                    }
-                    return@launch
-                }
-                val body = response.body?.string()
-                if (body.isNullOrEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        viewModel.onLocationSelected(lat, lng, "$lat, $lng", "")
-                    }
-                    return@launch
-                }
-
-                val json = gson.fromJson(body, JsonObject::class.java)
-                val displayName = json.get("display_name")?.asString ?: ""
-                val name = json.get("name")?.asString
-                    ?: json.getAsJsonObject("address")?.get("road")?.asString
-                    ?: displayName
-
-                withContext(Dispatchers.Main) {
-                    viewModel.onLocationSelected(lat, lng, name, displayName)
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    viewModel.onLocationSelected(lat, lng, "$lat, $lng", "")
-                }
+        lifecycleScope.launch {
+            val result = geoCoder.reverseGeocode(lat, lng)
+            if (result != null) {
+                viewModel.onLocationSelected(lat, lng, result.name, result.address)
             }
         }
     }
@@ -166,50 +126,31 @@ class MapFragment : Fragment() {
             return
         }
 
-        lifecycleScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch {
             try {
-                val encoded = URLEncoder.encode(query, "UTF-8")
-                val url = "https://nominatim.openstreetmap.org/search?format=json&q=$encoded&limit=5&accept-language=zh"
-                val request = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", "MockLocationApp/1.0")
-                    .header("Accept-Language", "zh-CN,zh;q=0.9")
-                    .build()
-                val response = httpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
+                val result = geoCoder.search(query)
+                if (result != null) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(requireContext(), "搜索失败 (HTTP ${response.code})", Toast.LENGTH_SHORT).show()
-                    }
-                    return@launch
-                }
-                val body = response.body?.string()
-                if (body.isNullOrEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(requireContext(), R.string.no_results, Toast.LENGTH_SHORT).show()
-                    }
-                    return@launch
-                }
-
-                val results = gson.fromJson(body, com.google.gson.JsonArray::class.java)
-                if (results.size() > 0) {
-                    val first = results[0].asJsonObject
-                    val lat = first.get("lat").asString.toDouble()
-                    val lng = first.get("lon").asString.toDouble()
-                    val name = first.get("display_name")?.asString ?: ""
-
-                    withContext(Dispatchers.Main) {
-                        val geoPoint = GeoPoint(lat, lng)
+                        val geoPoint = GeoPoint(result.latitude, result.longitude)
                         map?.controller?.animateTo(geoPoint)
                         selectLocation(geoPoint)
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(requireContext(), R.string.no_results, Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            requireContext(),
+                            "未找到该地点，请尝试输入坐标（如：22.5431, 114.0579）",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(requireContext(), "搜索出错: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        requireContext(),
+                        "搜索失败，请尝试输入坐标（如：22.5431, 114.0579）",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }
@@ -247,6 +188,10 @@ class MapFragment : Fragment() {
                     binding.btnMock.text = getString(R.string.btn_stop_mock)
                 } else {
                     binding.btnMock.text = getString(R.string.btn_start_mock)
+                }
+                state.error?.let {
+                    Toast.makeText(requireContext(), it, Toast.LENGTH_LONG).show()
+                    viewModel.clearError()
                 }
             }
         }

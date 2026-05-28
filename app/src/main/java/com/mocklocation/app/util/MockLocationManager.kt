@@ -14,8 +14,6 @@ class MockLocationManager(context: Context) {
     fun isMockLocationEnabled(): Boolean {
         return try {
             val provider = LocationManager.GPS_PROVIDER
-            locationManager.getProvider(provider) != null &&
-                locationManager.isProviderEnabled(provider)
             val addResult = try {
                 locationManager.addTestProvider(
                     provider, false, false, false, false,
@@ -37,39 +35,48 @@ class MockLocationManager(context: Context) {
         }
     }
 
-    fun startMocking(latitude: Double, longitude: Double) {
-        try {
-            locationManager.removeTestProvider(LocationManager.GPS_PROVIDER)
-        } catch (_: Exception) {
+    fun startMocking(latitude: Double, longitude: Double): Boolean {
+        return try {
+            try {
+                locationManager.removeTestProvider(LocationManager.GPS_PROVIDER)
+            } catch (_: Exception) {
+            }
+
+            locationManager.addTestProvider(
+                LocationManager.GPS_PROVIDER,
+                false, false, false, false,
+                true, true, true, 0, 1
+            )
+            locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
+            pushLocation(latitude, longitude)
+            true
+        } catch (e: SecurityException) {
+            false
+        } catch (e: Exception) {
+            false
         }
-
-        locationManager.addTestProvider(
-            LocationManager.GPS_PROVIDER,
-            false, false, false, false,
-            true, true, true, 0, 1
-        )
-        locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
-
-        pushLocation(latitude, longitude)
     }
 
     fun pushLocation(latitude: Double, longitude: Double) {
-        val location = Location(LocationManager.GPS_PROVIDER).apply {
-            this.latitude = latitude
-            this.longitude = longitude
-            altitude = 0.0
-            accuracy = 5.0f
-            time = System.currentTimeMillis()
-            elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                bearingAccuracyDegrees = 0.0f
-                verticalAccuracyMeters = 5.0f
-                speedAccuracyMetersPerSecond = 0.0f
+        try {
+            val location = Location(LocationManager.GPS_PROVIDER).apply {
+                this.latitude = latitude
+                this.longitude = longitude
+                altitude = 0.0
+                accuracy = 5.0f
+                time = System.currentTimeMillis()
+                elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    bearingAccuracyDegrees = 0.0f
+                    verticalAccuracyMeters = 5.0f
+                    speedAccuracyMetersPerSecond = 0.0f
+                }
+                speed = 0.0f
+                bearing = 0.0f
             }
-            speed = 0.0f
-            bearing = 0.0f
+            locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, location)
+        } catch (_: Exception) {
         }
-        locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, location)
     }
 
     fun stopMocking() {
