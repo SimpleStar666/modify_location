@@ -8,6 +8,7 @@ class HistoryRepository(private val dao: HistoryDao) {
     fun getAll(): Flow<List<LocationHistory>> = dao.getAll()
 
     suspend fun insert(history: LocationHistory): Long {
+        dao.deleteByLocation(history.latitude, history.longitude)
         val id = dao.insert(history)
         dao.trimToLimit()
         return id

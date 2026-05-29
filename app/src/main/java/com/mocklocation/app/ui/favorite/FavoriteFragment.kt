@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.mocklocation.app.R
@@ -136,6 +137,11 @@ class FavoriteFragment : Fragment() {
             holder.binding.tvAddress.text = item.address
             holder.binding.btnLocate.setOnClickListener {
                 viewModel.startMocking(item)
+                Toast.makeText(requireContext(), "正在模拟定位: ${item.name}", Toast.LENGTH_SHORT).show()
+                try {
+                    findNavController().navigate(R.id.mapFragment)
+                } catch (_: Exception) {
+                }
             }
             holder.binding.root.setOnLongClickListener {
                 AlertDialog.Builder(requireContext())

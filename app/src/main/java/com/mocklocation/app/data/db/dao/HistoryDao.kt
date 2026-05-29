@@ -12,6 +12,9 @@ interface HistoryDao {
     @Insert
     suspend fun insert(history: LocationHistory): Long
 
+    @Query("DELETE FROM history WHERE latitude = :lat AND longitude = :lng")
+    suspend fun deleteByLocation(lat: Double, lng: Double)
+
     @Query("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY usedAt DESC LIMIT 200)")
     suspend fun trimToLimit()
 
