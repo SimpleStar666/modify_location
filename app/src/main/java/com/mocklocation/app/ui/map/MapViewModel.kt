@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mocklocation.app.App
@@ -122,7 +123,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     init {
         try {
             val filter = IntentFilter(MockLocationService.ACTION_MOCK_STATUS)
-            application.registerReceiver(statusReceiver, filter)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                application.registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                application.registerReceiver(statusReceiver, filter)
+            }
         } catch (_: Exception) {
         }
 
@@ -179,6 +184,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             )
             return
         }
+
+        _uiState.value = _uiState.value.copy(
+            isMocking = true,
+            mockingName = state.selectedName
+        )
 
         viewModelScope.launch {
             historyRepo.insert(
