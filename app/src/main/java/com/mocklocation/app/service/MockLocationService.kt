@@ -27,6 +27,8 @@ class MockLocationService : Service() {
         const val EXTRA_NETWORK_MOCKED = "network_mocked"
         const val EXTRA_GPS_ERROR = "gps_error"
         const val EXTRA_NETWORK_ERROR = "network_error"
+        const val EXTRA_GPS_RAW_ERROR = "gps_raw_error"
+        const val EXTRA_NETWORK_RAW_ERROR = "network_raw_error"
 
         var isRunning = false
             private set
@@ -83,6 +85,8 @@ class MockLocationService : Service() {
         statusIntent.putExtra(EXTRA_NETWORK_MOCKED, status.networkMocked)
         statusIntent.putExtra(EXTRA_GPS_ERROR, status.gpsError ?: "")
         statusIntent.putExtra(EXTRA_NETWORK_ERROR, status.networkError ?: "")
+        statusIntent.putExtra(EXTRA_GPS_RAW_ERROR, status.gpsRawError ?: "")
+        statusIntent.putExtra(EXTRA_NETWORK_RAW_ERROR, status.networkRawError ?: "")
         sendBroadcast(statusIntent)
 
         if (!status.anyMocked) {

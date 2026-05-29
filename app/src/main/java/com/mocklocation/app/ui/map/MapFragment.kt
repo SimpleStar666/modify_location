@@ -3,9 +3,12 @@ package com.mocklocation.app.ui.map
 import android.Manifest
 import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -22,6 +25,7 @@ import com.mocklocation.app.databinding.FragmentMapBinding
 import com.mocklocation.app.util.AmapTileSource
 import com.mocklocation.app.util.CoordTransform
 import com.mocklocation.app.util.GeoCoder
+import com.mocklocation.app.util.MockDiagnostic
 import com.mocklocation.app.util.PermissionHelper
 import kotlinx.coroutines.launch
 import org.osmdroid.views.MapView
@@ -210,12 +214,7 @@ class MapFragment : Fragment() {
             if (state.isMocking) {
                 viewModel.stopMocking()
             } else {
-                if (!PermissionHelper.hasLocationPermission(requireContext())) {
-                    pendingMockStart = true
-                    PermissionHelper.requestLocationPermission(requireActivity(), REQUEST_MOCK_PERMISSION)
-                } else {
-                    viewModel.startMocking()
-                }
+                startMockWithPreCheck()
             }
         }
 
@@ -227,6 +226,91 @@ class MapFragment : Fragment() {
             }
             viewModel.addFavorite()
         }
+    }
+
+    private fun startMockWithPreCheck() {
+        if (!PermissionHelper.hasLocationPermission(requireContext())) {
+            pendingMockStart = true
+            PermissionHelper.requestLocationPermission(requireActivity(), REQUEST_MOCK_PERMISSION)
+            return
+        }
+
+        val hasFineOnly = ContextCompat.checkSelfPermission(
+            requireContext(), Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasFineOnly) {
+            showNeedFineLocationDialog()
+            return
+        }
+
+        val diagnostic = viewModel.runDiagnostic()
+        if (diagnostic.isReady) {
+            viewModel.startMocking()
+        } else {
+            showDiagnosticDialog(diagnostic)
+        }
+    }
+
+    private fun showNeedFineLocationDialog() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("需要精确位置权限")
+            .setMessage("模拟定位需要「精确位置」权限，不能只有「大致位置」。\n\n" +
+                "请按以下步骤操作：\n" +
+                "1. 长按本应用图标\n" +
+                "2. 点击「应用信息」\n" +
+                "3. 点击「权限」\n" +
+                "4. 点击「位置信息」\n" +
+                "5. 选择「仅在使用中允许」或「始终允许」\n" +
+                "6. 确保打开了「使用精确位置」开关")
+            .setPositiveButton("去设置") { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", requireContext().packageName, null)
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showDiagnosticDialog(diagnostic: MockDiagnostic) {
+        val message = buildString {
+            append("━━━ 诊断结果 ━━━\n\n")
+            append(diagnostic.toDisplayText())
+            append("\n━━━ 解决方法 ━━━\n\n")
+            append(diagnostic.getSolutionText())
+        }
+
+        val builder = AlertDialog.Builder(requireContext())
+            .setTitle("模拟定位预检失败")
+            .setMessage(message)
+            .setNegativeButton("关闭", null)
+
+        if (!diagnostic.hasFineLocation) {
+            builder.setPositiveButton("去应用设置") { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", requireContext().packageName, null)
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {
+                }
+            }
+        } else if (!diagnostic.canAddTestProvider) {
+            builder.setPositiveButton("去开发者选项") { _, _ ->
+                try {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        builder.show()
     }
 
     private fun observeState() {
@@ -264,14 +348,24 @@ class MapFragment : Fragment() {
                             val err = state.gpsError ?: state.networkError ?: ""
                             when {
                                 err.contains("位置权限") -> "⚠️ 请授予「精确位置」权限后重试"
-                                err.contains("未选为模拟") -> "⚠️ 请在开发者选项中重新选择本应用为模拟定位应用"
+                                err.contains("未选为模拟") -> "⚠️ 请在开发者选项中重新选择本应用"
                                 else -> "⏳ 等待系统读取模拟位置..."
                             }
                         }
                         else -> "⏳ 等待系统读取模拟位置..."
                     }
 
-                    binding.tvMockStatus.text = "$line1\n$line2"
+                    val rawInfo = buildString {
+                        val rawGps = state.gpsRawError
+                        val rawNet = state.networkRawError
+                        if (!rawGps.isNullOrBlank() || !rawNet.isNullOrBlank()) {
+                            append("\n")
+                            if (!rawGps.isNullOrBlank()) append("系统错误: $rawGps")
+                            else if (!rawNet.isNullOrBlank()) append("系统错误: $rawNet")
+                        }
+                    }
+
+                    binding.tvMockStatus.text = "$line1\n$line2$rawInfo"
                     if (gpsMatch || netMatch) {
                         binding.tvMockStatus.setTextColor(0xFF4CAF50.toInt())
                     } else if (!state.gpsMocked && !state.networkMocked) {
@@ -284,7 +378,11 @@ class MapFragment : Fragment() {
                     binding.tvMockStatus.visibility = View.GONE
                 }
                 state.error?.let {
-                    Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
+                    AlertDialog.Builder(requireContext())
+                        .setTitle("模拟定位")
+                        .setMessage(it)
+                        .setPositiveButton("确定", null)
+                        .show()
                     viewModel.clearError()
                 }
             }
@@ -314,7 +412,7 @@ class MapFragment : Fragment() {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     if (pendingMockStart) {
                         pendingMockStart = false
-                        viewModel.startMocking()
+                        startMockWithPreCheck()
                     }
                 } else {
                     pendingMockStart = false

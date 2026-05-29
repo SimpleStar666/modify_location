@@ -11,6 +11,7 @@ import com.mocklocation.app.App
 import com.mocklocation.app.data.db.entity.FavoriteLocation
 import com.mocklocation.app.data.db.entity.LocationHistory
 import com.mocklocation.app.service.MockLocationService
+import com.mocklocation.app.util.MockDiagnostic
 import com.mocklocation.app.util.MockLocationManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,10 +31,13 @@ data class MapUiState(
     val networkMocked: Boolean = false,
     val gpsError: String? = null,
     val networkError: String? = null,
+    val gpsRawError: String? = null,
+    val networkRawError: String? = null,
     val verifyGpsLat: Double = 0.0,
     val verifyGpsLng: Double = 0.0,
     val verifyNetworkLat: Double = 0.0,
     val verifyNetworkLng: Double = 0.0,
+    val diagnostic: MockDiagnostic? = null,
     val error: String? = null
 )
 
@@ -54,25 +58,57 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 val networkMocked = intent.getBooleanExtra(MockLocationService.EXTRA_NETWORK_MOCKED, false)
                 val gpsError = intent.getStringExtra(MockLocationService.EXTRA_GPS_ERROR)
                 val networkError = intent.getStringExtra(MockLocationService.EXTRA_NETWORK_ERROR)
+                val gpsRawError = intent.getStringExtra(MockLocationService.EXTRA_GPS_RAW_ERROR)
+                val networkRawError = intent.getStringExtra(MockLocationService.EXTRA_NETWORK_RAW_ERROR)
 
                 _uiState.value = _uiState.value.copy(
                     isMocking = gpsMocked || networkMocked,
                     gpsMocked = gpsMocked,
                     networkMocked = networkMocked,
                     gpsError = if (gpsError.isNullOrEmpty()) null else gpsError,
-                    networkError = if (networkError.isNullOrEmpty()) null else networkError
+                    networkError = if (networkError.isNullOrEmpty()) null else networkError,
+                    gpsRawError = if (gpsRawError.isNullOrEmpty()) null else gpsRawError,
+                    networkRawError = if (networkRawError.isNullOrEmpty()) null else networkRawError
                 )
 
                 if (!gpsMocked && !networkMocked) {
                     val gpsErr = gpsError ?: ""
                     val netErr = networkError ?: ""
+                    val rawGps = gpsRawError ?: ""
+                    val rawNet = networkRawError ?: ""
+                    val hasRawInfo = rawGps.isNotBlank() || rawNet.isNotBlank()
                     val errorMsg = when {
                         gpsErr.contains("位置权限") || netErr.contains("位置权限") ->
-                            "模拟定位需要位置权限！请在弹出的权限请求中选择「始终允许」或「仅在使用中允许」，然后重试"
-                        gpsErr.contains("未选为模拟") || netErr.contains("未选为模拟") ->
-                            "模拟定位未生效！请在「设置 → 开发者选项 → 选择模拟位置信息应用」中重新选择本应用（更换签名后需重新选择）"
-                        else ->
-                            "模拟定位启动失败！请检查：\n1. 已授予「精确位置」权限\n2. 已在开发者选项中选择本应用为模拟定位应用"
+                            "模拟定位需要「精确位置」权限！\n请长按本应用图标 → 应用信息 → 权限 → 位置信息 → 选择「精确位置」"
+                        gpsErr.contains("未选为模拟") || netErr.contains("未选为模拟") -> {
+                            buildString {
+                                append("模拟定位未生效！请在开发者选项中重新选择本应用。\n\n")
+                                if (hasRawInfo) {
+                                    append("系统错误详情：\n")
+                                    if (rawGps.isNotBlank()) append("GPS: $rawGps\n")
+                                    if (rawNet.isNotBlank()) append("网络: $rawNet\n")
+                                    append("\n")
+                                }
+                                append("解决方法：\n")
+                                append("1. 设置 → 开发者选项 → 选择模拟位置信息应用\n")
+                                append("2. 先选择其他应用，再重新选择本应用\n")
+                                append("3. 完全关闭本应用后重新打开")
+                            }
+                        }
+                        else -> {
+                            buildString {
+                                append("模拟定位启动失败！\n\n")
+                                if (hasRawInfo) {
+                                    append("系统错误详情：\n")
+                                    if (rawGps.isNotBlank()) append("GPS: $rawGps\n")
+                                    if (rawNet.isNotBlank()) append("网络: $rawNet\n")
+                                    append("\n")
+                                }
+                                append("请检查：\n")
+                                append("1. 已授予「精确位置」权限\n")
+                                append("2. 已在开发者选项中选择本应用为模拟定位应用")
+                            }
+                        }
                     }
                     _uiState.value = _uiState.value.copy(
                         isMocking = false,
@@ -107,6 +143,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun runDiagnostic(): MockDiagnostic {
+        val diagnostic = mockLocationManager.runDiagnostic()
+        _uiState.value = _uiState.value.copy(diagnostic = diagnostic)
+        return diagnostic
+    }
+
     fun onLocationSelected(
         wgsLat: Double, wgsLng: Double,
         gcjLat: Double, gcjLng: Double,
@@ -138,11 +180,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        _uiState.value = _uiState.value.copy(
-            isMocking = true,
-            mockingName = state.selectedName
-        )
-
         viewModelScope.launch {
             historyRepo.insert(
                 LocationHistory(
@@ -171,6 +208,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             networkMocked = false,
             gpsError = null,
             networkError = null,
+            gpsRawError = null,
+            networkRawError = null,
             verifyGpsLat = 0.0,
             verifyGpsLng = 0.0,
             verifyNetworkLat = 0.0,
