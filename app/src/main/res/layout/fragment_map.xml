@@ -34,13 +34,6 @@
                 android:imeOptions="actionSearch"
                 android:inputType="text" />
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/search_results"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:maxHeight="200dp"
-                android:visibility="gone" />
-
         </LinearLayout>
 
     </com.google.android.material.card.MaterialCardView>
@@ -84,6 +77,15 @@
                 android:layout_height="wrap_content"
                 android:textSize="12sp"
                 android:textColor="@color/secondary"
+                android:layout_marginTop="4dp" />
+
+            <TextView
+                android:id="@+id/tv_mock_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="#4CAF50"
+                android:visibility="gone"
                 android:layout_marginTop="4dp" />
 
             <LinearLayout

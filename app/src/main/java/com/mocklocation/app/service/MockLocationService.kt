@@ -3,6 +3,7 @@ package com.mocklocation.app.service
 import android.app.*
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.location.Location
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -22,6 +23,13 @@ class MockLocationService : Service() {
         const val EXTRA_LATITUDE = "latitude"
         const val EXTRA_LONGITUDE = "longitude"
         const val EXTRA_NAME = "name"
+
+        var isRunning = false
+            private set
+        var currentMockLat = 0.0
+            private set
+        var currentMockLng = 0.0
+            private set
     }
 
     private val mockManager by lazy { MockLocationManager(this) }
@@ -69,6 +77,10 @@ class MockLocationService : Service() {
             return START_NOT_STICKY
         }
 
+        isRunning = true
+        currentMockLat = currentLat
+        currentMockLng = currentLng
+
         startMockingLoop()
         return START_STICKY
     }
@@ -78,7 +90,7 @@ class MockLocationService : Service() {
         mockJob = scope.launch {
             while (isActive) {
                 mockManager.pushLocation(currentLat, currentLng)
-                delay(1000)
+                delay(500)
             }
         }
     }
@@ -86,6 +98,9 @@ class MockLocationService : Service() {
     private fun stopMockingAndStopSelf() {
         mockJob?.cancel()
         mockManager.stopMocking()
+        isRunning = false
+        currentMockLat = 0.0
+        currentMockLng = 0.0
         scope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -94,6 +109,9 @@ class MockLocationService : Service() {
     override fun onDestroy() {
         mockJob?.cancel()
         mockManager.stopMocking()
+        isRunning = false
+        currentMockLat = 0.0
+        currentMockLng = 0.0
         scope.cancel()
         super.onDestroy()
     }

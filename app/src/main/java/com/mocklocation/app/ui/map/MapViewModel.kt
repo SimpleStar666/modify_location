@@ -2,12 +2,15 @@ package com.mocklocation.app.ui.map
 
 import android.app.Application
 import android.content.Intent
+import android.location.Location
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mocklocation.app.App
 import com.mocklocation.app.data.db.entity.FavoriteLocation
 import com.mocklocation.app.data.db.entity.LocationHistory
 import com.mocklocation.app.service.MockLocationService
+import com.mocklocation.app.util.MockLocationManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -21,6 +24,9 @@ data class MapUiState(
     val selectedAddress: String = "",
     val isMocking: Boolean = false,
     val mockingName: String = "",
+    val mockVerifyLat: Double = 0.0,
+    val mockVerifyLng: Double = 0.0,
+    val mockVerifyProvider: String = "",
     val error: String? = null
 )
 
@@ -29,9 +35,29 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as App
     private val historyRepo = app.historyRepository
     private val favoriteRepo = app.favoriteRepository
+    private val mockLocationManager = MockLocationManager(application)
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState
+
+    init {
+        viewModelScope.launch {
+            while (true) {
+                if (MockLocationService.isRunning) {
+                    val loc = mockLocationManager.getCurrentLocation()
+                    if (loc != null) {
+                        _uiState.value = _uiState.value.copy(
+                            isMocking = true,
+                            mockVerifyLat = loc.latitude,
+                            mockVerifyLng = loc.longitude,
+                            mockVerifyProvider = loc.provider ?: ""
+                        )
+                    }
+                }
+                delay(2000)
+            }
+        }
+    }
 
     fun onLocationSelected(
         wgsLat: Double, wgsLng: Double,
@@ -92,7 +118,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
         _uiState.value = _uiState.value.copy(
             isMocking = false,
-            mockingName = ""
+            mockingName = "",
+            mockVerifyLat = 0.0,
+            mockVerifyLng = 0.0,
+            mockVerifyProvider = ""
         )
     }
 

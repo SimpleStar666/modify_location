@@ -238,8 +238,25 @@ class MapFragment : Fragment() {
                 }
                 if (state.isMocking) {
                     binding.btnMock.text = getString(R.string.btn_stop_mock)
+                    if (state.mockVerifyLat != 0.0) {
+                        binding.tvMockStatus.visibility = View.VISIBLE
+                        val match = Math.abs(state.mockVerifyLat - state.selectedLat) < 0.001 &&
+                            Math.abs(state.mockVerifyLng - state.selectedLng) < 0.001
+                        if (match) {
+                            binding.tvMockStatus.text = "✅ 模拟定位生效中 (${state.mockVerifyProvider})"
+                            binding.tvMockStatus.setTextColor(0xFF4CAF50.toInt())
+                        } else {
+                            binding.tvMockStatus.text = "⚠️ 系统定位与模拟位置不一致，可能被其他App覆盖"
+                            binding.tvMockStatus.setTextColor(0xFFFF9800.toInt())
+                        }
+                    } else {
+                        binding.tvMockStatus.visibility = View.VISIBLE
+                        binding.tvMockStatus.text = "⏳ 等待模拟定位生效..."
+                        binding.tvMockStatus.setTextColor(0xFFFF9800.toInt())
+                    }
                 } else {
                     binding.btnMock.text = getString(R.string.btn_start_mock)
+                    binding.tvMockStatus.visibility = View.GONE
                 }
                 state.error?.let {
                     Toast.makeText(requireContext(), it, Toast.LENGTH_SHORT).show()
