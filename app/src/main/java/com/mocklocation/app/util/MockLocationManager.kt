@@ -3,6 +3,7 @@ package com.mocklocation.app.util
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Criteria
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
@@ -37,12 +38,18 @@ data class MockDiagnostic(
                 append("长按本应用图标 → 应用信息 → 权限 → 位置信息 → 选择「精确位置」\n\n")
             }
             if (!canAddTestProvider) {
-                append("【必须】设置模拟定位应用：\n")
-                append("设置 → 开发者选项 → 选择模拟位置信息应用 → 选择「模拟定位」\n")
-                append("⚠️如果已经选择了本应用但仍不生效，请：\n")
-                append("  1. 先切换选择其他应用\n")
-                append("  2. 再重新选择本应用\n")
-                append("  3. 完全关闭本应用后重新打开\n\n")
+                val err = testProviderRawError ?: ""
+                if (err.contains("powerUsage", ignoreCase = true)) {
+                    append("【兼容性问题】本应用需要更新以支持你的 Android 版本。\n")
+                    append("请更新到最新版本后重试。\n\n")
+                } else {
+                    append("【必须】设置模拟定位应用：\n")
+                    append("设置 → 开发者选项 → 选择模拟位置信息应用 → 选择「模拟定位」\n")
+                    append("⚠️如果已经选择了本应用但仍不生效，请：\n")
+                    append("  1. 先切换选择其他应用\n")
+                    append("  2. 再重新选择本应用\n")
+                    append("  3. 完全关闭本应用后重新打开\n\n")
+                }
             }
         }
     }
@@ -100,7 +107,7 @@ class MockLocationManager(context: Context) {
         try {
             locationManager.addTestProvider(
                 "__diag_check__", false, false, false, false,
-                false, false, false, 0, 1
+                false, false, false, Criteria.POWER_LOW, Criteria.ACCURACY_FINE
             )
             locationManager.removeTestProvider("__diag_check__")
             canAdd = true
@@ -175,14 +182,14 @@ class MockLocationManager(context: Context) {
             locationManager.addTestProvider(
                 provider,
                 false, false, false, false,
-                true, true, true, 0, 1
+                true, true, true, Criteria.POWER_LOW, Criteria.ACCURACY_FINE
             )
             locationManager.setTestProviderEnabled(provider, true)
             ProviderResult(true, null, null)
         } catch (e: SecurityException) {
             ProviderResult(false, diagnoseSecurityException(e), e.message ?: e.toString())
         } catch (e: IllegalArgumentException) {
-            ProviderResult(false, "不支持", e.message ?: e.toString())
+            ProviderResult(false, "参数错误: ${e.message}", e.message ?: e.toString())
         } catch (e: Exception) {
             ProviderResult(false, e.javaClass.simpleName, e.message ?: e.toString())
         }
