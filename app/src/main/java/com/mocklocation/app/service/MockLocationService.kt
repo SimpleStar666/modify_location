@@ -3,13 +3,13 @@ package com.mocklocation.app.service
 import android.app.*
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.location.Location
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.mocklocation.app.R
 import com.mocklocation.app.ui.MainActivity
 import com.mocklocation.app.util.MockLocationManager
+import com.mocklocation.app.util.MockStatus
 import kotlinx.coroutines.*
 
 class MockLocationService : Service() {
@@ -18,17 +18,23 @@ class MockLocationService : Service() {
         const val CHANNEL_ID = "mock_location_channel"
         const val NOTIFICATION_ID = 1
         const val ACTION_STOP = "com.mocklocation.app.ACTION_STOP"
-        const val ACTION_MOCK_FAILED = "com.mocklocation.app.ACTION_MOCK_FAILED"
+        const val ACTION_MOCK_STATUS = "com.mocklocation.app.ACTION_MOCK_STATUS"
 
         const val EXTRA_LATITUDE = "latitude"
         const val EXTRA_LONGITUDE = "longitude"
         const val EXTRA_NAME = "name"
+        const val EXTRA_GPS_MOCKED = "gps_mocked"
+        const val EXTRA_NETWORK_MOCKED = "network_mocked"
+        const val EXTRA_GPS_ERROR = "gps_error"
+        const val EXTRA_NETWORK_ERROR = "network_error"
 
         var isRunning = false
             private set
         var currentMockLat = 0.0
             private set
         var currentMockLng = 0.0
+            private set
+        var lastMockStatus: MockStatus? = null
             private set
     }
 
@@ -68,12 +74,19 @@ class MockLocationService : Service() {
             return START_NOT_STICKY
         }
 
-        val success = mockManager.startMocking(currentLat, currentLng)
-        if (!success) {
+        val status = mockManager.startMocking(currentLat, currentLng)
+        lastMockStatus = status
+
+        val statusIntent = Intent(ACTION_MOCK_STATUS)
+        statusIntent.setPackage(packageName)
+        statusIntent.putExtra(EXTRA_GPS_MOCKED, status.gpsMocked)
+        statusIntent.putExtra(EXTRA_NETWORK_MOCKED, status.networkMocked)
+        statusIntent.putExtra(EXTRA_GPS_ERROR, status.gpsError ?: "")
+        statusIntent.putExtra(EXTRA_NETWORK_ERROR, status.networkError ?: "")
+        sendBroadcast(statusIntent)
+
+        if (!status.anyMocked) {
             stopMockingAndStopSelf()
-            val failIntent = Intent(ACTION_MOCK_FAILED)
-            failIntent.setPackage(packageName)
-            sendBroadcast(failIntent)
             return START_NOT_STICKY
         }
 
@@ -101,6 +114,7 @@ class MockLocationService : Service() {
         isRunning = false
         currentMockLat = 0.0
         currentMockLng = 0.0
+        lastMockStatus = null
         scope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -112,6 +126,7 @@ class MockLocationService : Service() {
         isRunning = false
         currentMockLat = 0.0
         currentMockLng = 0.0
+        lastMockStatus = null
         scope.cancel()
         super.onDestroy()
     }

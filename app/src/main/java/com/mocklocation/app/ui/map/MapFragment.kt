@@ -238,20 +238,31 @@ class MapFragment : Fragment() {
                 }
                 if (state.isMocking) {
                     binding.btnMock.text = getString(R.string.btn_stop_mock)
-                    if (state.mockVerifyLat != 0.0) {
-                        binding.tvMockStatus.visibility = View.VISIBLE
-                        val match = Math.abs(state.mockVerifyLat - state.selectedLat) < 0.001 &&
-                            Math.abs(state.mockVerifyLng - state.selectedLng) < 0.001
-                        if (match) {
-                            binding.tvMockStatus.text = "✅ 模拟定位生效中 (${state.mockVerifyProvider})"
-                            binding.tvMockStatus.setTextColor(0xFF4CAF50.toInt())
-                        } else {
-                            binding.tvMockStatus.text = "⚠️ 系统定位与模拟位置不一致，可能被其他App覆盖"
-                            binding.tvMockStatus.setTextColor(0xFFFF9800.toInt())
-                        }
+                    binding.tvMockStatus.visibility = View.VISIBLE
+
+                    val gpsStatus = if (state.gpsMocked) "✅GPS" else "❌GPS${state.gpsError?.let { "($it)" } ?: ""}"
+                    val netStatus = if (state.networkMocked) "✅网络" else "❌网络${state.networkError?.let { "($it)" } ?: ""}"
+
+                    val gpsMatch = state.gpsMocked && state.verifyGpsLat != 0.0 &&
+                        Math.abs(state.verifyGpsLat - state.selectedLat) < 0.001 &&
+                        Math.abs(state.verifyGpsLng - state.selectedLng) < 0.001
+                    val netMatch = state.networkMocked && state.verifyNetworkLat != 0.0 &&
+                        Math.abs(state.verifyNetworkLat - state.selectedLat) < 0.001 &&
+                        Math.abs(state.verifyNetworkLng - state.selectedLng) < 0.001
+
+                    val line1 = "$gpsStatus  $netStatus"
+                    val line2 = if (gpsMatch || netMatch) {
+                        "✅ 系统定位已切换到模拟位置"
+                    } else if (state.verifyGpsLat != 0.0 || state.verifyNetworkLat != 0.0) {
+                        "⚠️ 系统定位与模拟位置不一致"
                     } else {
-                        binding.tvMockStatus.visibility = View.VISIBLE
-                        binding.tvMockStatus.text = "⏳ 等待模拟定位生效..."
+                        "⏳ 等待系统读取模拟位置..."
+                    }
+
+                    binding.tvMockStatus.text = "$line1\n$line2"
+                    if (gpsMatch || netMatch) {
+                        binding.tvMockStatus.setTextColor(0xFF4CAF50.toInt())
+                    } else {
                         binding.tvMockStatus.setTextColor(0xFFFF9800.toInt())
                     }
                 } else {

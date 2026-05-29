@@ -1,8 +1,10 @@
 package com.mocklocation.app.ui.map
 
 import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
-import android.location.Location
+import android.content.IntentFilter
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mocklocation.app.App
@@ -24,9 +26,14 @@ data class MapUiState(
     val selectedAddress: String = "",
     val isMocking: Boolean = false,
     val mockingName: String = "",
-    val mockVerifyLat: Double = 0.0,
-    val mockVerifyLng: Double = 0.0,
-    val mockVerifyProvider: String = "",
+    val gpsMocked: Boolean = false,
+    val networkMocked: Boolean = false,
+    val gpsError: String? = null,
+    val networkError: String? = null,
+    val verifyGpsLat: Double = 0.0,
+    val verifyGpsLng: Double = 0.0,
+    val verifyNetworkLat: Double = 0.0,
+    val verifyNetworkLng: Double = 0.0,
     val error: String? = null
 )
 
@@ -40,19 +47,50 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState
 
+    private val statusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == MockLocationService.ACTION_MOCK_STATUS) {
+                val gpsMocked = intent.getBooleanExtra(MockLocationService.EXTRA_GPS_MOCKED, false)
+                val networkMocked = intent.getBooleanExtra(MockLocationService.EXTRA_NETWORK_MOCKED, false)
+                val gpsError = intent.getStringExtra(MockLocationService.EXTRA_GPS_ERROR)
+                val networkError = intent.getStringExtra(MockLocationService.EXTRA_NETWORK_ERROR)
+
+                _uiState.value = _uiState.value.copy(
+                    isMocking = gpsMocked || networkMocked,
+                    gpsMocked = gpsMocked,
+                    networkMocked = networkMocked,
+                    gpsError = if (gpsError.isNullOrEmpty()) null else gpsError,
+                    networkError = if (networkError.isNullOrEmpty()) null else networkError
+                )
+
+                if (!gpsMocked && !networkMocked) {
+                    _uiState.value = _uiState.value.copy(
+                        isMocking = false,
+                        error = "模拟定位启动失败！请在「设置 → 开发者选项 → 模拟位置信息应用」中选择本应用"
+                    )
+                }
+            }
+        }
+    }
+
     init {
+        try {
+            val filter = IntentFilter(MockLocationService.ACTION_MOCK_STATUS)
+            application.registerReceiver(statusReceiver, filter)
+        } catch (_: Exception) {
+        }
+
         viewModelScope.launch {
             while (true) {
                 if (MockLocationService.isRunning) {
-                    val loc = mockLocationManager.getCurrentLocation()
-                    if (loc != null) {
-                        _uiState.value = _uiState.value.copy(
-                            isMocking = true,
-                            mockVerifyLat = loc.latitude,
-                            mockVerifyLng = loc.longitude,
-                            mockVerifyProvider = loc.provider ?: ""
-                        )
-                    }
+                    val gpsLoc = mockLocationManager.readGpsLocation()
+                    val networkLoc = mockLocationManager.readNetworkLocation()
+                    _uiState.value = _uiState.value.copy(
+                        verifyGpsLat = gpsLoc?.latitude ?: 0.0,
+                        verifyGpsLng = gpsLoc?.longitude ?: 0.0,
+                        verifyNetworkLat = networkLoc?.latitude ?: 0.0,
+                        verifyNetworkLng = networkLoc?.longitude ?: 0.0
+                    )
                 }
                 delay(2000)
             }
@@ -85,7 +123,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             getApplication<Application>().startForegroundService(intent)
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(
-                error = "启动模拟定位失败，请在手机「设置 → 开发者选项 → 模拟位置信息应用」中选择本应用"
+                error = "启动模拟定位失败: ${e.message}"
             )
             return
         }
@@ -119,9 +157,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(
             isMocking = false,
             mockingName = "",
-            mockVerifyLat = 0.0,
-            mockVerifyLng = 0.0,
-            mockVerifyProvider = ""
+            gpsMocked = false,
+            networkMocked = false,
+            gpsError = null,
+            networkError = null,
+            verifyGpsLat = 0.0,
+            verifyGpsLng = 0.0,
+            verifyNetworkLat = 0.0,
+            verifyNetworkLng = 0.0
         )
     }
 
@@ -147,5 +190,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        try {
+            getApplication<Application>().unregisterReceiver(statusReceiver)
+        } catch (_: Exception) {
+        }
     }
 }
