@@ -38,6 +38,7 @@ class MapFragment : Fragment() {
     private var map: MapView? = null
     private var currentMarker: Marker? = null
     private lateinit var geoCoder: GeoCoder
+    private var pendingMockStart = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -209,7 +210,12 @@ class MapFragment : Fragment() {
             if (state.isMocking) {
                 viewModel.stopMocking()
             } else {
-                viewModel.startMocking()
+                if (!PermissionHelper.hasLocationPermission(requireContext())) {
+                    pendingMockStart = true
+                    PermissionHelper.requestLocationPermission(requireActivity(), REQUEST_MOCK_PERMISSION)
+                } else {
+                    viewModel.startMocking()
+                }
             }
         }
 
@@ -251,17 +257,25 @@ class MapFragment : Fragment() {
                         Math.abs(state.verifyNetworkLng - state.selectedLng) < 0.001
 
                     val line1 = "$gpsStatus  $netStatus"
-                    val line2 = if (gpsMatch || netMatch) {
-                        "✅ 系统定位已切换到模拟位置"
-                    } else if (state.verifyGpsLat != 0.0 || state.verifyNetworkLat != 0.0) {
-                        "⚠️ 系统定位与模拟位置不一致"
-                    } else {
-                        "⏳ 等待系统读取模拟位置..."
+                    val line2 = when {
+                        gpsMatch || netMatch -> "✅ 系统定位已切换到模拟位置"
+                        state.verifyGpsLat != 0.0 || state.verifyNetworkLat != 0.0 -> "⚠️ 系统定位与模拟位置不一致"
+                        !state.gpsMocked && !state.networkMocked -> {
+                            val err = state.gpsError ?: state.networkError ?: ""
+                            when {
+                                err.contains("位置权限") -> "⚠️ 请授予「精确位置」权限后重试"
+                                err.contains("未选为模拟") -> "⚠️ 请在开发者选项中重新选择本应用为模拟定位应用"
+                                else -> "⏳ 等待系统读取模拟位置..."
+                            }
+                        }
+                        else -> "⏳ 等待系统读取模拟位置..."
                     }
 
                     binding.tvMockStatus.text = "$line1\n$line2"
                     if (gpsMatch || netMatch) {
                         binding.tvMockStatus.setTextColor(0xFF4CAF50.toInt())
+                    } else if (!state.gpsMocked && !state.networkMocked) {
+                        binding.tvMockStatus.setTextColor(0xFFF44336.toInt())
                     } else {
                         binding.tvMockStatus.setTextColor(0xFFFF9800.toInt())
                     }
@@ -295,8 +309,21 @@ class MapFragment : Fragment() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_PERMISSIONS) {
-            map?.invalidate()
+        when (requestCode) {
+            REQUEST_MOCK_PERMISSION -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    if (pendingMockStart) {
+                        pendingMockStart = false
+                        viewModel.startMocking()
+                    }
+                } else {
+                    pendingMockStart = false
+                    Toast.makeText(requireContext(), "需要位置权限才能使用模拟定位功能", Toast.LENGTH_LONG).show()
+                }
+            }
+            REQUEST_PERMISSIONS -> {
+                map?.invalidate()
+            }
         }
     }
 
@@ -318,5 +345,6 @@ class MapFragment : Fragment() {
 
     companion object {
         private const val REQUEST_PERMISSIONS = 100
+        private const val REQUEST_MOCK_PERMISSION = 101
     }
 }

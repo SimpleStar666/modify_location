@@ -1,12 +1,14 @@
 package com.mocklocation.app.ui.favorite
 
 import android.app.AlertDialog
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -17,6 +19,7 @@ import com.mocklocation.app.R
 import com.mocklocation.app.data.db.entity.FavoriteLocation
 import com.mocklocation.app.databinding.FragmentFavoriteBinding
 import com.mocklocation.app.databinding.ItemFavoriteBinding
+import com.mocklocation.app.util.PermissionHelper
 import kotlinx.coroutines.launch
 
 class FavoriteFragment : Fragment() {
@@ -25,6 +28,7 @@ class FavoriteFragment : Fragment() {
     private val binding get() = _binding!!
     private val viewModel: FavoriteViewModel by viewModels()
     private val adapter = FavoriteAdapter()
+    private var pendingMockLocation: FavoriteLocation? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -110,9 +114,32 @@ class FavoriteFragment : Fragment() {
             .show()
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_MOCK_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                pendingMockLocation?.let { item ->
+                    viewModel.startMocking(item)
+                    Toast.makeText(requireContext(), "正在模拟定位: ${item.name}", Toast.LENGTH_SHORT).show()
+                    try {
+                        findNavController().navigate(R.id.mapFragment)
+                    } catch (_: Exception) {
+                    }
+                }
+            } else {
+                Toast.makeText(requireContext(), "需要位置权限才能使用模拟定位功能", Toast.LENGTH_LONG).show()
+            }
+            pendingMockLocation = null
+        }
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    companion object {
+        private const val REQUEST_MOCK_PERMISSION = 102
     }
 
     inner class FavoriteAdapter : RecyclerView.Adapter<FavoriteAdapter.ViewHolder>() {
@@ -136,11 +163,16 @@ class FavoriteFragment : Fragment() {
             holder.binding.tvName.text = item.name
             holder.binding.tvAddress.text = item.address
             holder.binding.btnLocate.setOnClickListener {
-                viewModel.startMocking(item)
-                Toast.makeText(requireContext(), "正在模拟定位: ${item.name}", Toast.LENGTH_SHORT).show()
-                try {
-                    findNavController().navigate(R.id.mapFragment)
-                } catch (_: Exception) {
+                if (!PermissionHelper.hasLocationPermission(requireContext())) {
+                    pendingMockLocation = item
+                    PermissionHelper.requestLocationPermission(requireActivity(), REQUEST_MOCK_PERMISSION)
+                } else {
+                    viewModel.startMocking(item)
+                    Toast.makeText(requireContext(), "正在模拟定位: ${item.name}", Toast.LENGTH_SHORT).show()
+                    try {
+                        findNavController().navigate(R.id.mapFragment)
+                    } catch (_: Exception) {
+                    }
                 }
             }
             holder.binding.root.setOnLongClickListener {

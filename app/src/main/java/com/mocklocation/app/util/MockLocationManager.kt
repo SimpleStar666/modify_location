@@ -1,10 +1,13 @@
 package com.mocklocation.app.util
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.SystemClock
+import androidx.core.content.ContextCompat
 
 data class MockStatus(
     val gpsMocked: Boolean = false,
@@ -14,22 +17,14 @@ data class MockStatus(
     val gpsError: String? = null,
     val networkError: String? = null,
     val passiveError: String? = null,
-    val fusedError: String? = null,
-    val currentGpsLocation: Location? = null,
-    val currentNetworkLocation: Location? = null
+    val fusedError: String? = null
 ) {
     val anyMocked: Boolean get() = gpsMocked || networkMocked
-    val summary: String
-        get() {
-            val parts = mutableListOf<String>()
-            parts.add("GPS: ${if (gpsMocked) "✅" else "❌${gpsError?.let { "($it)" } ?: ""}"}")
-            parts.add("Network: ${if (networkMocked) "✅" else "❌${networkError?.let { "($it)" } ?: ""}"}")
-            return parts.joinToString("  ")
-        }
 }
 
 class MockLocationManager(context: Context) {
 
+    private val appContext = context.applicationContext
     private val locationManager =
         context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
@@ -37,7 +32,22 @@ class MockLocationManager(context: Context) {
 
     fun getMockStatus(): MockStatus = mockStatus
 
+    fun hasFineLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            appContext, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     fun startMocking(latitude: Double, longitude: Double): MockStatus {
+        if (!hasFineLocationPermission()) {
+            return MockStatus(
+                gpsError = "需要位置权限",
+                networkError = "需要位置权限",
+                passiveError = "需要位置权限",
+                fusedError = "需要位置权限"
+            )
+        }
+
         val status = MockStatus()
 
         val gpsResult = tryAddProvider(LocationManager.GPS_PROVIDER)
@@ -52,7 +62,7 @@ class MockLocationManager(context: Context) {
             locationManager.setTestProviderEnabled("fused", true)
             fusedResult = Pair(true, null)
         } catch (e: SecurityException) {
-            fusedResult = Pair(false, "无权限")
+            fusedResult = Pair(false, diagnoseSecurityException(e))
         } catch (e: Exception) {
             fusedResult = Pair(false, e.javaClass.simpleName)
         }
@@ -75,6 +85,20 @@ class MockLocationManager(context: Context) {
         return mockStatus
     }
 
+    private fun diagnoseSecurityException(e: SecurityException): String {
+        val msg = e.message ?: ""
+        return when {
+            msg.contains("ACCESS_FINE_LOCATION", ignoreCase = true) ->
+                "需要位置权限"
+            msg.contains("ACCESS_MOCK_LOCATION", ignoreCase = true) ->
+                if (Build.VERSION.SDK_INT >= 31) "未选为模拟定位应用" else "未设为模拟定位应用"
+            msg.contains("Provider", ignoreCase = true) && msg.contains("requires", ignoreCase = true) ->
+                "需要位置权限"
+            else ->
+                "未选为模拟定位应用"
+        }
+    }
+
     private fun tryAddProvider(provider: String): Pair<Boolean, String?> {
         return try {
             try {
@@ -89,7 +113,7 @@ class MockLocationManager(context: Context) {
             locationManager.setTestProviderEnabled(provider, true)
             Pair(true, null)
         } catch (e: SecurityException) {
-            Pair(false, "未设为模拟定位应用")
+            Pair(false, diagnoseSecurityException(e))
         } catch (e: IllegalArgumentException) {
             Pair(false, "不支持")
         } catch (e: Exception) {

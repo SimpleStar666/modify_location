@@ -64,9 +64,19 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 )
 
                 if (!gpsMocked && !networkMocked) {
+                    val gpsErr = gpsError ?: ""
+                    val netErr = networkError ?: ""
+                    val errorMsg = when {
+                        gpsErr.contains("位置权限") || netErr.contains("位置权限") ->
+                            "模拟定位需要位置权限！请在弹出的权限请求中选择「始终允许」或「仅在使用中允许」，然后重试"
+                        gpsErr.contains("未选为模拟") || netErr.contains("未选为模拟") ->
+                            "模拟定位未生效！请在「设置 → 开发者选项 → 选择模拟位置信息应用」中重新选择本应用（更换签名后需重新选择）"
+                        else ->
+                            "模拟定位启动失败！请检查：\n1. 已授予「精确位置」权限\n2. 已在开发者选项中选择本应用为模拟定位应用"
+                    }
                     _uiState.value = _uiState.value.copy(
                         isMocking = false,
-                        error = "模拟定位启动失败！请在「设置 → 开发者选项 → 模拟位置信息应用」中选择本应用"
+                        error = errorMsg
                     )
                 }
             }
