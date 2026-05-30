@@ -226,6 +226,10 @@ class MapFragment : Fragment() {
             }
             viewModel.addFavorite()
         }
+
+        binding.btnWzryGuide.setOnClickListener {
+            showWzryGuide()
+        }
     }
 
     private fun startMockWithPreCheck() {
@@ -322,6 +326,17 @@ class MapFragment : Fragment() {
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.compatibility_title)
             .setMessage(R.string.compatibility_message)
+            .setNeutralButton(R.string.wzry_guide_button) { _, _ ->
+                showWzryGuide()
+            }
+            .setPositiveButton("知道了", null)
+            .show()
+    }
+
+    private fun showWzryGuide() {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.wzry_guide_title)
+            .setMessage(R.string.wzry_guide_message)
             .setPositiveButton("知道了", null)
             .show()
     }
