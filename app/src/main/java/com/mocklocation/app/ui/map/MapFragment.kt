@@ -247,6 +247,7 @@ class MapFragment : Fragment() {
         val diagnostic = viewModel.runDiagnostic()
         if (diagnostic.isReady) {
             viewModel.startMocking()
+            showCompatibilityInfoIfNeeded()
         } else {
             showDiagnosticDialog(diagnostic)
         }
@@ -311,6 +312,18 @@ class MapFragment : Fragment() {
         }
 
         builder.show()
+    }
+
+    private fun showCompatibilityInfoIfNeeded() {
+        val prefs = requireContext().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("compatibility_shown", false)) return
+        prefs.edit().putBoolean("compatibility_shown", true).apply()
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.compatibility_title)
+            .setMessage(R.string.compatibility_message)
+            .setPositiveButton("知道了", null)
+            .show()
     }
 
     private fun observeState() {

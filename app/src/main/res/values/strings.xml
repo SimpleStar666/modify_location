@@ -21,4 +21,6 @@
     <string name="title_add_favorite">添加收藏</string>
     <string name="hint_location_name">位置名称</string>
     <string name="favorite_limit_reached">收藏已达上限（50条）</string>
+    <string name="compatibility_title">模拟定位兼容性说明</string>
+    <string name="compatibility_message">模拟定位已生效！但不同App的兼容性不同：\n\n✅ 通常有效的App：\n• 浏览器/网页定位\n• 部分地图App\n• 部分社交App\n• 使用系统LocationManager的App\n\n❌ 通常无效的App：\n• 飞书/钉钉/企业微信（考勤类）\n• 王者荣耀/和平精英（游戏类）\n• 高德地图/百度地图\n• 使用Google定位服务的App\n\n原因：这些App使用独立的定位SDK（高德/Google Fused），不走系统LocationManager，且会检测isMock标记。\n\n💡 如需对所有App生效，需要Root手机+安装LSPosed框架。</string>
 </resources>
